@@ -1,11 +1,8 @@
 import streamlit as st
 import io
-from pypdf import PdfReader
 import re
+from pypdf import PdfReader
 
-# ------------------------------
-# 1. Text extraction using pypdf (pure Python)
-# ------------------------------
 def extract_text_from_pdf(file_bytes):
     reader = PdfReader(io.BytesIO(file_bytes))
     text = ""
@@ -13,11 +10,7 @@ def extract_text_from_pdf(file_bytes):
         text += page.extract_text() or ""
     return text
 
-# ------------------------------
-# 2. Rule‑based answer generator
-# ------------------------------
 def generate_answer(rfi_text):
-    # Extract keywords (simple regex)
     keywords = []
     patterns = [
         r'\b(?:fire\s+safety|fire\s+protection)\b',
@@ -35,8 +28,6 @@ def generate_answer(rfi_text):
             keywords.append(re.search(pat, rfi_text, re.IGNORECASE).group())
 
     keywords = list(set(keywords))
-
-    # Base answer template
     answer = "Based on Singapore Standards and codes of practice:\n\n"
 
     if not keywords:
@@ -45,7 +36,6 @@ def generate_answer(rfi_text):
         answer += f"The following points are relevant to the terms found: {', '.join(keywords)}.\n\n"
         answer += "- All works shall comply with the Singapore Standards (SS) and CP (Code of Practice) series, as applicable.\n"
         answer += "- For specific requirements, refer to:\n"
-        # Add specific standards based on keywords
         if any(k in ['fire safety', 'fire protection'] for k in keywords):
             answer += "  * Fire Safety: SS 578 (Code of Practice for Fire Safety) and Fire Code (SCDF).\n"
         if any(k in ['structural', 'structure', 'beam', 'column', 'slab'] for k in keywords):
@@ -69,9 +59,6 @@ def generate_answer(rfi_text):
 
     return answer
 
-# ------------------------------
-# 3. Streamlit UI
-# ------------------------------
 st.set_page_config(page_title="RFI Answer Assistant", page_icon="📄")
 st.title("📄 RFI Answer Assistant (Singapore Standards)")
 st.markdown("Upload a **Request for Information** (PDF only) and get a suggested answer based on **Singapore Standards and codes of practice**.")
@@ -101,7 +88,6 @@ if uploaded_file is not None:
     if "answer" in st.session_state:
         st.subheader("Suggested Answer")
         st.code(st.session_state.answer, language="text")
-
         st.download_button(
             label="📥 Download as TXT",
             data=st.session_state.answer,

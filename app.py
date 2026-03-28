@@ -2,11 +2,10 @@ import streamlit as st
 import io
 import PyPDF2
 from docx import Document
-import requests
-import json
+import re
 
 # ------------------------------
-# 1. Text extraction helpers
+# 1. Text extraction helpers (same as before)
 # ------------------------------
 def extract_text_from_pdf(file_bytes):
     reader = PyPDF2.PdfReader(io.BytesIO(file_bytes))
@@ -29,66 +28,70 @@ def extract_text(file_bytes, filename):
         raise ValueError("Unsupported file type. Please upload a PDF or DOCX file.")
 
 # ------------------------------
-# 2. Generate answer using Hugging Face free inference API
+# 2. Rule‑based answer generator
 # ------------------------------
-def generate_answer_hf(rfi_text, api_token, model="google/flan-t5-small"):
-    # Build prompt
-    prompt = f"""Answer the following Request for Information (RFI) as a consultant.
-Use Singapore Standards and codes of practice (e.g., SS CP series) in your answer.
-Be concise and cite specific standards if possible.
+def generate_answer(rfi_text):
+    # Extract keywords (simple regex)
+    keywords = []
+    # Look for common technical terms
+    patterns = [
+        r'\b(?:fire\s+safety|fire\s+protection)\b',
+        r'\b(structural|structure|beam|column|slab|foundation)\b',
+        r'\b(ventilation|HVAC|air\s+conditioning)\b',
+        r'\b(electrical|lighting|power\s+supply)\b',
+        r'\b(plumbing|sanitary|drainage)\b',
+        r'\b(waterproofing|dampness|leakage)\b',
+        r'\b(acoustic|noise|sound\s+insulation)\b',
+        r'\b(accessibility|barrier\s+free|ramp)\b',
+        r'\b(material|concrete|steel|timber)\b',
+    ]
+    for pat in patterns:
+        if re.search(pat, rfi_text, re.IGNORECASE):
+            keywords.append(re.search(pat, rfi_text, re.IGNORECASE).group())
 
-RFI: {rfi_text}
+    # Remove duplicates
+    keywords = list(set(keywords))
 
-Answer:"""
+    # Base answer template
+    answer = "Based on Singapore Standards and codes of practice:\n\n"
 
-    API_URL = f"https://api-inference.huggingface.co/models/{model}"
-    headers = {"Authorization": f"Bearer {api_token}"}
-    payload = {
-        "inputs": prompt,
-        "parameters": {
-            "max_length": 200,
-            "temperature": 0.3,
-            "do_sample": False
-        }
-    }
-
-    response = requests.post(API_URL, headers=headers, json=payload)
-    if response.status_code == 200:
-        result = response.json()
-        # The response format depends on the model; for text2text-generation it's a list
-        if isinstance(result, list) and len(result) > 0:
-            return result[0].get("generated_text", "").strip()
-        elif isinstance(result, dict) and "generated_text" in result:
-            return result["generated_text"].strip()
-        else:
-            return "Unexpected response format from API."
+    if not keywords:
+        answer += "The RFI does not contain obvious technical keywords. Please refer to the relevant Singapore Standard applicable to your discipline (e.g., SS CP series, SS EN). For general guidance, consult the Building Control Act and regulations."
     else:
-        return f"API error {response.status_code}: {response.text}"
+        answer += f"The following points are relevant to the terms found: {', '.join(keywords)}.\n\n"
+        answer += "- All works shall comply with the Singapore Standards (SS) and CP (Code of Practice) series, as applicable.\n"
+        answer += "- For specific requirements, refer to:\n"
+        # Add specific standards based on keywords
+        if any(k in ['fire safety', 'fire protection'] for k in keywords):
+            answer += "  * Fire Safety: SS 578 (Code of Practice for Fire Safety) and Fire Code (SCDF).\n"
+        if any(k in ['structural', 'structure', 'beam', 'column', 'slab'] for k in keywords):
+            answer += "  * Structural: SS EN 1992 (Eurocode 2 for concrete) and SS EN 1993 (for steel).\n"
+        if any(k in ['ventilation', 'HVAC', 'air conditioning'] for k in keywords):
+            answer += "  * Ventilation: SS 553 (Code of Practice for Air‑conditioning and Mechanical Ventilation).\n"
+        if any(k in ['electrical', 'lighting', 'power supply'] for k in keywords):
+            answer += "  * Electrical: SS 638 (Code of Practice for Electrical Installations).\n"
+        if any(k in ['plumbing', 'sanitary', 'drainage'] for k in keywords):
+            answer += "  * Plumbing: SS 636 (Code of Practice for Water Services).\n"
+        if any(k in ['waterproofing', 'dampness', 'leakage'] for k in keywords):
+            answer += "  * Waterproofing: SS 615 (Code of Practice for Waterproofing).\n"
+        if any(k in ['acoustic', 'noise', 'sound insulation'] for k in keywords):
+            answer += "  * Acoustic: SS 553 (Acoustic requirements) and relevant SS EN standards.\n"
+        if any(k in ['accessibility', 'barrier free', 'ramp'] for k in keywords):
+            answer += "  * Accessibility: SS 580 (Code of Practice for Accessibility).\n"
+        if any(k in ['material', 'concrete', 'steel', 'timber'] for k in keywords):
+            answer += "  * Materials: SS EN 206 (Concrete), SS EN 10025 (Steel), etc.\n"
+
+        answer += "\nAny deviation must be submitted to the relevant authority for approval with supporting documentation."
+
+    return answer
 
 # ------------------------------
 # 3. Streamlit UI
 # ------------------------------
 st.set_page_config(page_title="RFI Answer Assistant", page_icon="📄")
 st.title("📄 RFI Answer Assistant (Singapore Standards)")
-st.markdown("Upload a **Request for Information** (PDF or DOCX) and get a suggested answer based on **Singapore Standards and codes of practice**.")
+st.markdown("Upload a **Request for Information** (PDF or DOCX) and get a **suggested answer** based on **Singapore Standards and codes of practice**.")
 
-# --- API token input ---
-# Option 1: Use Streamlit secrets (recommended for production)
-# Option 2: Let the user enter their own token (for demo)
-api_token = None
-if "HF_TOKEN" in st.secrets:
-    api_token = st.secrets["HF_TOKEN"]
-else:
-    api_token = st.text_input(
-        "Hugging Face API Token (get a free one at huggingface.co/settings/tokens)",
-        type="password",
-        help="Your token is not stored. It's used only to call the free inference API."
-    )
-    if not api_token:
-        st.warning("Please enter your Hugging Face API token to generate answers.")
-        st.stop()
-
-# File uploader
 uploaded_file = st.file_uploader("Choose a file", type=["pdf", "docx"])
 
 if uploaded_file is not None:
@@ -104,26 +107,13 @@ if uploaded_file is not None:
             st.error(f"Error reading file: {e}")
             st.stop()
 
-    # Show extracted text (optional)
     with st.expander("Show extracted RFI text"):
         st.text(text)
 
-    # Model selection (you can add more models)
-    model_name = st.selectbox(
-        "Choose a model",
-        ["google/flan-t5-small", "google/flan-t5-base", "t5-small"],
-        index=0
-    )
-
     if st.button("Generate Answer"):
-        with st.spinner("Generating answer via Hugging Face API..."):
-            answer = generate_answer_hf(text, api_token, model_name)
-            if answer.startswith("API error"):
-                st.error(answer)
-            else:
-                st.session_state.answer = answer
+        answer = generate_answer(text)
+        st.session_state.answer = answer
 
-    # Display answer
     if "answer" in st.session_state:
         st.subheader("Suggested Answer")
         st.code(st.session_state.answer, language="text")

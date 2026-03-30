@@ -1,16 +1,35 @@
 import streamlit as st
 import io
 import re
-from PyPDF2 import PdfReader
+import sys
+import subprocess
 
+# ------------------------------
+# Ensure pypdf is installed (safety net)
+# ------------------------------
+try:
+    from pypdf import PdfReader
+except ImportError:
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "pypdf"])
+    from pypdf import PdfReader
+
+# ------------------------------
+# Text extraction from PDF
+# ------------------------------
 def extract_text_from_pdf(file_bytes):
     reader = PdfReader(io.BytesIO(file_bytes))
     text = ""
     for page in reader.pages:
-        text += page.extract_text() or ""
+        page_text = page.extract_text()
+        if page_text:
+            text += page_text + "\n"
     return text
 
+# ------------------------------
+# Rule‑based answer generator referencing Singapore Standards
+# ------------------------------
 def generate_answer(rfi_text):
+    # Keywords to detect technical areas
     keywords = []
     patterns = [
         r'\b(?:fire\s+safety|fire\s+protection)\b',
@@ -31,11 +50,15 @@ def generate_answer(rfi_text):
     answer = "Based on Singapore Standards and codes of practice:\n\n"
 
     if not keywords:
-        answer += "The RFI does not contain obvious technical keywords. Please refer to the relevant Singapore Standard applicable to your discipline (e.g., SS CP series, SS EN). For general guidance, consult the Building Control Act and regulations."
+        answer += ("The RFI does not contain obvious technical keywords. "
+                   "Please refer to the relevant Singapore Standard applicable to your discipline "
+                   "(e.g., SS CP series, SS EN). For general guidance, consult the Building Control Act and regulations.")
     else:
         answer += f"The following points are relevant to the terms found: {', '.join(keywords)}.\n\n"
         answer += "- All works shall comply with the Singapore Standards (SS) and CP (Code of Practice) series, as applicable.\n"
         answer += "- For specific requirements, refer to:\n"
+
+        # Add specific standards based on keywords
         if any(k in ['fire safety', 'fire protection'] for k in keywords):
             answer += "  * Fire Safety: SS 578 (Code of Practice for Fire Safety) and Fire Code (SCDF).\n"
         if any(k in ['structural', 'structure', 'beam', 'column', 'slab'] for k in keywords):
@@ -59,6 +82,9 @@ def generate_answer(rfi_text):
 
     return answer
 
+# ------------------------------
+# Streamlit UI
+# ------------------------------
 st.set_page_config(page_title="RFI Answer Assistant", page_icon="📄")
 st.title("📄 RFI Answer Assistant (Singapore Standards)")
 st.markdown("Upload a **Request for Information** (PDF only) and get a suggested answer based on **Singapore Standards and codes of practice**.")

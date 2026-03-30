@@ -1,7 +1,7 @@
 import streamlit as st
 import io
 import re
-from pypdf import PdfReader
+from PyPDF2 import PdfReader
 
 def extract_text_from_pdf(file_bytes):
     reader = PdfReader(io.BytesIO(file_bytes))

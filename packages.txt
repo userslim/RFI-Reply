@@ -1,5 +1,0 @@
-libjpeg-dev
-zlib1g-dev
-libfreetype6-dev
-liblcms2-dev
-libwebp-dev
